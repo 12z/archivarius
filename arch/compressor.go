@@ -4,7 +4,8 @@ import (
 	"archive/zip"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,35 +14,73 @@ import (
 type CompressionRequest struct {
 	ArchiveName string `json:"file"`
 	Directory   string `json:"dir"`
+	Filter      string `json:"filter,omitempty"`
 }
 
-func Compress(req CompressionRequest) error {
+func Compress(req CompressionRequest) (int, error) {
 	archDir := filepath.Dir(req.ArchiveName)
-	os.MkdirAll(archDir, os.ModePerm)
+	err := os.MkdirAll(archDir, os.ModePerm)
+	if err != nil {
+		return http.StatusBadRequest,
+			fmt.Errorf("unable to create parent directory for archive (%w)", err)
+	}
 
 	archiveFile, err := os.Create(req.ArchiveName)
 	if err != nil {
-		return fmt.Errorf("unable to create archive file (%w)", err)
+		return http.StatusBadRequest,
+			fmt.Errorf("unable to create archive file (%w)", err)
 	}
 	defer archiveFile.Close()
 	writer := zip.NewWriter(archiveFile)
 	defer writer.Close()
 
-	files, err := ioutil.ReadDir(req.Directory)
+	// room for optimisation
+	files, err := os.ReadDir(req.Directory)
 	if err != nil {
-		return fmt.Errorf("unable to list directory %s (%w)", req.Directory, err)
+		return http.StatusBadRequest,
+			fmt.Errorf("unable to list directory %s (%w)", req.Directory, err)
 	}
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].Size() > files[j].Size()
+	fileInfos := make([]fs.FileInfo, 0, len(files))
+	for _, entry := range files {
+		if entry.IsDir() {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return http.StatusInternalServerError,
+				fmt.Errorf("error reading info for file %s (%w)", entry.Name(), err)
+		}
+		fileInfos = append(fileInfos, info)
+	}
+	sort.Slice(fileInfos, func(i, j int) bool {
+		return fileInfos[i].Size() > fileInfos[j].Size()
 	})
 
-	for i := 0; i < 10; i++ {
-		filename := files[i].Name()
+	count := 0
+	for _, file := range fileInfos {
+		filename := file.Name()
+		if req.Filter != "" {
+			match, err := filepath.Match(req.Filter, filename)
+			if err != nil {
+				return http.StatusBadRequest, fmt.Errorf("malformed filter (%w)", err)
+			}
+			if !match {
+				continue
+			}
+		}
+
 		fullName := filepath.Join(req.Directory, filename)
-		processFile(fullName, writer)
+		err := processFile(fullName, writer)
+		if err != nil {
+			return http.StatusInternalServerError, fmt.Errorf("unable to compress file %s (%w)", filename, err)
+		}
+		count++
+		if count >= 10 {
+			break
+		}
 	}
 
-	return nil
+	return http.StatusOK, nil
 }
 
 func processFile(filename string, writer *zip.Writer) error {

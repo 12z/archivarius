@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 )
@@ -11,17 +12,28 @@ import (
 type ExtractRequest struct {
 	ArchiveName string `json:"file"`
 	Directory   string `json:"dir"`
+	Filter      string `json:"filter,omitempty"`
 }
 
-func Excract(req ExtractRequest) error {
+func Excract(req ExtractRequest) (int, error) {
 	reader, err := zip.OpenReader(req.ArchiveName)
 	if err != nil {
-		return fmt.Errorf("unable to open archive %s (%w)", req.ArchiveName, err)
+		return http.StatusBadRequest, fmt.Errorf("unable to open archive %s (%w)", req.ArchiveName, err)
 	}
 	defer reader.Close()
 
 	for _, f := range reader.File {
-		fp := filepath.Join(req.Directory, f.Name)
+		filename := filepath.Base(f.Name)
+		if req.Filter != "" {
+			match, err := filepath.Match(req.Filter, filename)
+			if err != nil {
+				return http.StatusBadRequest, fmt.Errorf("malformed filter (%w)", err)
+			}
+			if !match {
+				continue
+			}
+		}
+		fp := filepath.Join(req.Directory, filename)
 
 		// if folder create it
 		if f.FileInfo().IsDir() {
@@ -32,18 +44,20 @@ func Excract(req ExtractRequest) error {
 		os.MkdirAll(filepath.Dir(fp), os.ModePerm)
 		outFile, err := os.OpenFile(fp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
 		if err != nil {
-			return fmt.Errorf("unable to create file %s (%w)", fp, err)
+			return http.StatusBadRequest,
+				fmt.Errorf("unable to create file %s (%w)", fp, err)
 		}
 		defer outFile.Close()
 
 		archFileReader, err := f.Open()
 		if err != nil {
-			return fmt.Errorf("unable to open file %s in archive %s (%w)", fp, req.ArchiveName, err)
+			return http.StatusInternalServerError,
+				fmt.Errorf("unable to open file %s in archive %s (%w)", fp, req.ArchiveName, err)
 		}
 		defer archFileReader.Close()
 
 		io.Copy(outFile, archFileReader)
 	}
 
-	return nil
+	return http.StatusOK, nil
 }

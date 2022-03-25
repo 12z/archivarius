@@ -3,7 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"github.com/12z/archivarius/arch"
@@ -13,6 +13,11 @@ const apiPrefix = "/api/v1"
 
 type Server struct {
 	server http.Server
+}
+
+type Response struct {
+	Status  string `json:"status"`
+	Message string `json:"message,omitempty"`
 }
 
 // NewServer creates an instance of Server
@@ -39,42 +44,91 @@ func (s *Server) Serve() {
 }
 
 func compressHandler(rw http.ResponseWriter, r *http.Request) {
-	data, err := ioutil.ReadAll(r.Body)
+	statusCode, resp := processCompress(r.Body)
+	respData, err := json.Marshal(resp)
 	if err != nil {
 		rw.WriteHeader(http.StatusInternalServerError)
-		return
 	}
-	defer r.Body.Close()
+	rw.WriteHeader(statusCode)
+	rw.Write(respData)
+}
+
+func processCompress(r io.ReadCloser) (int, Response) {
+	var statusCode = 200
+	var resp Response
+
+	data, err := io.ReadAll(r)
+	if err != nil {
+		statusCode = 500
+		resp.Status = "nok"
+		resp.Message = "unable to read request"
+		return statusCode, resp
+	}
+	defer r.Close()
 
 	var compReq arch.CompressionRequest
 	err = json.Unmarshal(data, &compReq)
 	if err != nil {
-		rw.WriteHeader(http.StatusBadRequest)
-		return
+		statusCode = 400
+		resp.Status = "nok"
+		resp.Message = fmt.Sprintf("incorrect rquest format (%s)", err.Error())
+		return statusCode, resp
 	}
 
-	err = arch.Compress(compReq)
+	stCode, err := arch.Compress(compReq)
 	if err != nil {
-		rw.WriteHeader(http.StatusInternalServerError)
+		statusCode = stCode
+		resp.Status = "nok"
+		resp.Message = fmt.Sprintf("unable to compress (%s)", err.Error())
+		return statusCode, resp
 	}
+
+	resp.Status = "ok"
+
+	return statusCode, resp
 }
 
 func extractHandler(rw http.ResponseWriter, r *http.Request) {
-	data, err := ioutil.ReadAll(r.Body)
+	statusCode, resp := processExtract(r.Body)
+	respData, err := json.Marshal(resp)
 	if err != nil {
 		rw.WriteHeader(http.StatusInternalServerError)
-		return
 	}
-	defer r.Body.Close()
+	rw.WriteHeader(statusCode)
+	rw.Write(respData)
+}
+
+func processExtract(r io.ReadCloser) (int, Response) {
+	var statusCode = 200
+	var resp Response
+
+	data, err := io.ReadAll(r)
+	if err != nil {
+		statusCode = 500
+		resp.Status = "nok"
+		resp.Message = "unable to read request"
+		return statusCode, resp
+	}
+	defer r.Close()
 
 	var extReq arch.ExtractRequest
 	err = json.Unmarshal(data, &extReq)
 	if err != nil {
-		rw.WriteHeader(http.StatusBadRequest)
-		return
+		statusCode = 400
+		resp.Status = "nok"
+		resp.Message = fmt.Sprintf("incorrect rquest format (%s)", err.Error())
+		return statusCode, resp
 	}
-	err = arch.Excract(extReq)
+
+	stCode, err := arch.Excract(extReq)
 	if err != nil {
-		rw.WriteHeader(http.StatusInternalServerError)
+		statusCode = stCode
+		resp.Status = "nok"
+		resp.Message = fmt.Sprintf("unable to compress (%s)", err.Error())
+		return statusCode, resp
 	}
+
+	resp.Status = "ok"
+
+	return statusCode, resp
 }

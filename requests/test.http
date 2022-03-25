@@ -1,17 +1,19 @@
-GET http://localhost/api/v1/compress
+POST http://localhost/api/v1/compress
 Content-Type: application/json
 
 {
-    "file": ".testdata/dst/archive.zip",
-    "dir": ".testdata/src"
+    "file": ".testdata/archive/archive.zip",
+    "dir": ".testdata/src",
+    "filter": ""
 }
 
 ###
 
-GET http://localhost/api/v1/extract
+POST  http://localhost/api/v1/extract
 Content-Type: application/json
 
 {
-    "file": ".testdata/dst/archive.zip",
-    "dir": ".testdata/dst/one"
+    "file": ".testdata/archive/archive.zip",
+    "dir": ".testdata/dst/one",
+    "filter": ""
 }
