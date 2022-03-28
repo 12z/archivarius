@@ -12,7 +12,7 @@ import (
 const apiPrefix = "/api/v1"
 
 type Server struct {
-	server http.Server
+	server *http.Server
 }
 
 type Response struct {
@@ -21,19 +21,27 @@ type Response struct {
 }
 
 // NewServer creates an instance of Server
-func NewServer() *Server {
+func NewServer(srv *http.Server) *Server {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc(fmt.Sprintf("%s/compress", apiPrefix), compressHandler)
 	mux.HandleFunc(fmt.Sprintf("%s/extract", apiPrefix), extractHandler)
 
+	srv.Handler = mux
 	server := &Server{
-		server: http.Server{
-			Handler: mux,
-		},
+		server: srv,
 	}
 
 	return server
+}
+
+func Router() *http.ServeMux {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc(fmt.Sprintf("%s/compress", apiPrefix), compressHandler)
+	mux.HandleFunc(fmt.Sprintf("%s/extract", apiPrefix), extractHandler)
+
+	return mux
 }
 
 // Serve starts serving

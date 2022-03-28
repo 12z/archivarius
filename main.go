@@ -1,8 +1,13 @@
 package main
 
-import "github.com/12z/archivarius/server"
+import (
+	"net/http"
+
+	"github.com/12z/archivarius/server"
+)
 
 func main() {
-	server := server.NewServer()
+	srv := http.Server{}
+	server := server.NewServer(&srv)
 	server.Serve()
 }
