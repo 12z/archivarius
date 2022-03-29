@@ -19,7 +19,7 @@ The service has two methods
 
 #### Request
 
-Both methods accept the same JSON data structure
+Both methods accept POST requests with the same JSON data structure
 ```
 {
   "file": "path/to/archive.zip",
@@ -56,3 +56,8 @@ If error occured, non 2** HTTP code is returned with JSON response of a form
   "message": "detailes about the error"
 }
 ```
+
+### Tests
+
+To run tests provided execute
+`go test ./test`

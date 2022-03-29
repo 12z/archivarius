@@ -52,10 +52,15 @@ func (s *Server) Serve() {
 }
 
 func compressHandler(rw http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
 	statusCode, resp := processCompress(r.Body)
 	respData, err := json.Marshal(resp)
 	if err != nil {
 		rw.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 	rw.WriteHeader(statusCode)
 	rw.Write(respData)
@@ -97,6 +102,10 @@ func processCompress(r io.ReadCloser) (int, Response) {
 }
 
 func extractHandler(rw http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		rw.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
 	statusCode, resp := processExtract(r.Body)
 	respData, err := json.Marshal(resp)
 	if err != nil {

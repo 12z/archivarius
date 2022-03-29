@@ -277,6 +277,26 @@ func TestCompressNegative(t *testing.T) {
 			t.Fatalf("Response code expected %d got %d", 400, compResp.StatusCode)
 		}
 	})
+	t.Run("non POST compression request", func(t *testing.T) {
+		srv := setupServer()
+		setupTestBasicData(t, []int{})
+		defer teardownTestBasicData(t)
+		sUrl := srv.URL
+		serverUrl, err := url.Parse(sUrl)
+		if err != nil {
+			t.Errorf("error while parse testserver url: %v", err)
+			return
+		}
+
+		serverUrl.Path = "/api/v1/compress"
+		compResp, err := http.Get(serverUrl.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if compResp.StatusCode != 405 {
+			t.Fatalf("Response code expected %d got %d", 405, compResp.StatusCode)
+		}
+	})
 }
 
 func TestExtractNegative(t *testing.T) {
@@ -405,6 +425,26 @@ func TestExtractNegative(t *testing.T) {
 		}
 		if extResp.StatusCode != 400 {
 			t.Fatalf("Response code expected %d response %d", 400, extResp.StatusCode)
+		}
+	})
+	t.Run("non POST extraction request", func(t *testing.T) {
+		srv := setupServer()
+		setupTestBasicData(t, []int{})
+		defer teardownTestBasicData(t)
+		sUrl := srv.URL
+		serverUrl, err := url.Parse(sUrl)
+		if err != nil {
+			t.Errorf("error while parse testserver url: %v", err)
+			return
+		}
+
+		serverUrl.Path = "/api/v1/extract"
+		compResp, err := http.Get(serverUrl.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if compResp.StatusCode != 405 {
+			t.Fatalf("Response code expected %d got %d", 405, compResp.StatusCode)
 		}
 	})
 }
