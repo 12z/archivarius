@@ -3,12 +3,15 @@ package test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/12z/archivarius/arch"
 	"github.com/12z/archivarius/server"
@@ -115,7 +118,7 @@ func TestBasic(t *testing.T) {
 				return
 			}
 
-			compReq := arch.CompressionRequest{
+			compReq := arch.Request{
 				ArchiveName: ".tmp/test/archive.zip",
 				Directory:   ".tmp/test/src/",
 				Filter:      tt.compFilter,
@@ -137,7 +140,7 @@ func TestBasic(t *testing.T) {
 				t.Fatalf("not 200 response %d", compResp.StatusCode)
 			}
 
-			extReq := arch.ExtractRequest{
+			extReq := arch.Request{
 				ArchiveName: ".tmp/test/archive.zip",
 				Directory:   ".tmp/test/dst",
 				Filter:      tt.extrFilter,
@@ -187,19 +190,182 @@ func TestBasic(t *testing.T) {
 				t.Fatalf("wrong files restored: expected %s, got %s", expFilenames, actFilenames)
 			}
 		})
+
+		t.Run(fmt.Sprintf("async %s", tt.name), func(t *testing.T) {
+			sleepInterval := time.Millisecond * 10
+			srv := setupServer()
+			setupTestBasicData(t, tt.files)
+			defer teardownTestBasicData(t)
+			sUrl := srv.URL
+			serverUrl, err := url.Parse(sUrl)
+			if err != nil {
+				t.Errorf("error while parse testserver url: %v", err)
+				return
+			}
+
+			compReq := arch.Request{
+				ArchiveName: ".tmp/test/archive.zip",
+				Directory:   ".tmp/test/src/",
+				Filter:      tt.compFilter,
+				Limit:       tt.compLimit,
+			}
+
+			compReqData, err := json.Marshal(compReq)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			serverUrl.Path = "/api/v1/compress/async"
+			compResp, err := http.Post(
+				serverUrl.String(), "application/json", bytes.NewReader(compReqData))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if compResp.StatusCode != 200 {
+				t.Fatalf("not 200 response %d", compResp.StatusCode)
+			}
+			pRespData, err := io.ReadAll(compResp.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var pResp server.AsyncPostResponse
+			err = json.Unmarshal(pRespData, &pResp)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sessionId := pResp.SessionId
+
+			q := serverUrl.Query()
+			q.Add("session_id", sessionId)
+			serverUrl.RawQuery = q.Encode()
+
+			time.Sleep(sleepInterval)
+			compGetResp, err := http.Get(serverUrl.String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if compGetResp.StatusCode != 200 {
+				t.Fatalf("not 200 response %d", compGetResp.StatusCode)
+			}
+			gRespData, err := io.ReadAll(compGetResp.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var gResp server.AsyncGetResponse
+			err = json.Unmarshal(gRespData, &gResp)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if gResp.Status != server.Finished {
+				t.Fatalf("session not finished: status %s", gResp.Status)
+			}
+			if gResp.Result.Code != 200 {
+				t.Fatalf("session result code is not 200, %d", gResp.Result.Code)
+			}
+
+			extReq := arch.Request{
+				ArchiveName: ".tmp/test/archive.zip",
+				Directory:   ".tmp/test/dst",
+				Filter:      tt.extrFilter,
+				Limit:       tt.extrLimit,
+			}
+
+			extReqData, err := json.Marshal(extReq)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			serverUrl.Path = "/api/v1/extract/async"
+			serverUrl.RawQuery = ""
+			extResp, err := http.Post(
+				serverUrl.String(), "application/json", bytes.NewReader(extReqData))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if extResp.StatusCode != 200 {
+				t.Fatalf("not 200 response %d", extResp.StatusCode)
+			}
+
+			pRespData, err = io.ReadAll(extResp.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = json.Unmarshal(pRespData, &pResp)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sessionId = pResp.SessionId
+
+			q = serverUrl.Query()
+			q.Add("session_id", sessionId)
+			serverUrl.RawQuery = q.Encode()
+
+			time.Sleep(sleepInterval)
+			getResp, err := http.Get(serverUrl.String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if compGetResp.StatusCode != 200 {
+				t.Fatalf("not 200 response %d", compGetResp.StatusCode)
+			}
+			gRespData, err = io.ReadAll(getResp.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = json.Unmarshal(gRespData, &gResp)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if gResp.Status != server.Finished {
+				t.Fatalf("session not finished: status %s", gResp.Status)
+			}
+			if gResp.Result.Code != 200 {
+				t.Fatalf("session result code is not 200, %d", gResp.Result.Code)
+			}
+
+			elems, err := os.ReadDir(".tmp/test/dst")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(tt.expFiles) != len(elems) {
+				t.Fatalf("expected %d files, got %d", len(tt.expFiles), len(elems))
+			}
+
+			expFilenames := func() []string {
+				names := make([]string, 0, len(tt.expFiles))
+				for _, i := range tt.expFiles {
+					name := filepath.Base(files[i].name)
+					names = append(names, name)
+				}
+				return names
+			}()
+			actFilenames := func() []string {
+				names := make([]string, 0, len(elems))
+				for _, elem := range elems {
+					names = append(names, elem.Name())
+				}
+				return names
+			}()
+			if !fileListsEqual(expFilenames, actFilenames) {
+				t.Fatalf("wrong files restored: expected %s, got %s", expFilenames, actFilenames)
+			}
+		})
+
 	}
+
 }
 
 func TestCompressNegative(t *testing.T) {
 	tests := []struct {
 		name    string
-		req     arch.CompressionRequest
+		req     arch.Request
 		expCode int
 		expResp []byte
 	}{
 		{
 			name: "nonexistent source dir",
-			req: arch.CompressionRequest{
+			req: arch.Request{
 				ArchiveName: ".tmp/test/archive.zip",
 				Directory:   ".tmp/test2/src/",
 			},
@@ -207,7 +373,7 @@ func TestCompressNegative(t *testing.T) {
 		},
 		{
 			name: "no rights to create archive",
-			req: arch.CompressionRequest{
+			req: arch.Request{
 				ArchiveName: "/archive.zip",
 				Directory:   ".tmp/test2/src/",
 			},
@@ -302,13 +468,13 @@ func TestCompressNegative(t *testing.T) {
 func TestExtractNegative(t *testing.T) {
 	tests := []struct {
 		name    string
-		req     arch.ExtractRequest
+		req     arch.Request
 		expCode int
 		expResp []byte
 	}{
 		{
 			name: "nonexistent archive",
-			req: arch.ExtractRequest{
+			req: arch.Request{
 				ArchiveName: ".tmp/test2/archive.zip",
 				Directory:   ".tmp/test/dst",
 			},
@@ -316,7 +482,7 @@ func TestExtractNegative(t *testing.T) {
 		},
 		{
 			name: "no rights to create archive",
-			req: arch.ExtractRequest{
+			req: arch.Request{
 				ArchiveName: ".tmp/test/archive.zip",
 				Directory:   "/",
 			},
@@ -339,7 +505,7 @@ func TestExtractNegative(t *testing.T) {
 				return
 			}
 
-			compReq := arch.CompressionRequest{
+			compReq := arch.Request{
 				ArchiveName: ".tmp/test/archive.zip",
 				Directory:   ".tmp/test/src/",
 			}
@@ -386,7 +552,7 @@ func TestExtractNegative(t *testing.T) {
 			return
 		}
 
-		compReq := arch.CompressionRequest{
+		compReq := arch.Request{
 			ArchiveName: ".tmp/test/archive.zip",
 			Directory:   ".tmp/test/src/",
 		}
@@ -450,7 +616,8 @@ func TestExtractNegative(t *testing.T) {
 }
 
 func setupServer() *httptest.Server {
-	mux := server.Router()
+	sm := server.NewSessionManager()
+	mux := server.Router(sm)
 	testServer := httptest.NewServer(mux)
 	return testServer
 }

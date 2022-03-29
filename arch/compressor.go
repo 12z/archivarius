@@ -13,14 +13,14 @@ import (
 
 const defaultMaxFiles = 10
 
-type CompressionRequest struct {
+type Request struct {
 	ArchiveName string `json:"file"`
 	Directory   string `json:"dir"`
 	Filter      string `json:"filter,omitempty"`
 	Limit       int    `json:"limit,omitempty"`
 }
 
-func Compress(req CompressionRequest) (int, error) {
+func Compress(req Request) (int, error) {
 	archDir := filepath.Dir(req.ArchiveName)
 	err := os.MkdirAll(archDir, os.ModePerm)
 	if err != nil {

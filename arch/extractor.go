@@ -9,14 +9,7 @@ import (
 	"path/filepath"
 )
 
-type ExtractRequest struct {
-	ArchiveName string `json:"file"`
-	Directory   string `json:"dir"`
-	Filter      string `json:"filter,omitempty"`
-	Limit       int    `json:"limit"`
-}
-
-func Excract(req ExtractRequest) (int, error) {
+func Extract(req Request) (int, error) {
 	reader, err := zip.OpenReader(req.ArchiveName)
 	if err != nil {
 		return http.StatusBadRequest, fmt.Errorf("unable to open archive %s (%w)", req.ArchiveName, err)
