@@ -13,6 +13,7 @@ type ExtractRequest struct {
 	ArchiveName string `json:"file"`
 	Directory   string `json:"dir"`
 	Filter      string `json:"filter,omitempty"`
+	Limit       int    `json:"limit"`
 }
 
 func Excract(req ExtractRequest) (int, error) {
@@ -21,6 +22,12 @@ func Excract(req ExtractRequest) (int, error) {
 		return http.StatusBadRequest, fmt.Errorf("unable to open archive %s (%w)", req.ArchiveName, err)
 	}
 	defer reader.Close()
+
+	maxFiles := req.Limit
+	count := 0
+	// for zip no sorting by size is needed
+	// files in reader.File are sorted in order of addition
+	// which is by size in our case
 
 	for _, f := range reader.File {
 		filename := filepath.Base(f.Name)
@@ -34,12 +41,6 @@ func Excract(req ExtractRequest) (int, error) {
 			}
 		}
 		fp := filepath.Join(req.Directory, filename)
-
-		// if folder create it
-		if f.FileInfo().IsDir() {
-			os.MkdirAll(fp, os.ModePerm)
-			continue
-		}
 
 		os.MkdirAll(filepath.Dir(fp), os.ModePerm)
 		outFile, err := os.OpenFile(fp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
@@ -57,6 +58,14 @@ func Excract(req ExtractRequest) (int, error) {
 		defer archFileReader.Close()
 
 		io.Copy(outFile, archFileReader)
+
+		if maxFiles == 0 {
+			continue
+		}
+		count++
+		if count >= maxFiles {
+			break
+		}
 	}
 
 	return http.StatusOK, nil

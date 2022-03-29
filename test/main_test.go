@@ -46,6 +46,9 @@ func TestBasic(t *testing.T) {
 		compFilter string
 		extrFilter string
 
+		compLimit int
+		extrLimit int
+
 		files    []int
 		expFiles []int
 	}{
@@ -86,6 +89,18 @@ func TestBasic(t *testing.T) {
 			files:      []int{4, 5, 6, 21},
 			expFiles:   []int{4, 5, 6},
 		},
+		{
+			name:      "compress limit",
+			compLimit: 3,
+			files:     []int{5, 6, 7, 8},
+			expFiles:  []int{6, 7, 8},
+		},
+		{
+			name:      "extract limit",
+			extrLimit: 3,
+			files:     []int{5, 6, 7, 8, 9},
+			expFiles:  []int{7, 8, 9},
+		},
 	}
 
 	for _, tt := range tests {
@@ -104,6 +119,7 @@ func TestBasic(t *testing.T) {
 				ArchiveName: ".tmp/test/archive.zip",
 				Directory:   ".tmp/test/src/",
 				Filter:      tt.compFilter,
+				Limit:       tt.compLimit,
 			}
 
 			compReqData, err := json.Marshal(compReq)
@@ -125,6 +141,7 @@ func TestBasic(t *testing.T) {
 				ArchiveName: ".tmp/test/archive.zip",
 				Directory:   ".tmp/test/dst",
 				Filter:      tt.extrFilter,
+				Limit:       tt.extrLimit,
 			}
 
 			extReqData, err := json.Marshal(extReq)

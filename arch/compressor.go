@@ -11,10 +11,13 @@ import (
 	"sort"
 )
 
+const defaultMaxFiles = 10
+
 type CompressionRequest struct {
 	ArchiveName string `json:"file"`
 	Directory   string `json:"dir"`
 	Filter      string `json:"filter,omitempty"`
+	Limit       int    `json:"limit,omitempty"`
 }
 
 func Compress(req CompressionRequest) (int, error) {
@@ -56,7 +59,12 @@ func Compress(req CompressionRequest) (int, error) {
 		return fileInfos[i].Size() > fileInfos[j].Size()
 	})
 
+	maxFiles := defaultMaxFiles
+	if req.Limit != 0 {
+		maxFiles = req.Limit
+	}
 	count := 0
+
 	for _, file := range fileInfos {
 		filename := file.Name()
 		if req.Filter != "" {
@@ -75,7 +83,7 @@ func Compress(req CompressionRequest) (int, error) {
 			return http.StatusInternalServerError, fmt.Errorf("unable to compress file %s (%w)", filename, err)
 		}
 		count++
-		if count >= 10 {
+		if count >= maxFiles {
 			break
 		}
 	}
