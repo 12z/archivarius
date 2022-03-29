@@ -20,25 +20,32 @@ type fileDef struct {
 }
 
 var files = map[int]fileDef{
-	1:   {".tmp/test/src/one.txt", []byte("1")},
-	2:   {".tmp/test/src/two.txt", []byte("12")},
-	3:   {".tmp/test/src/three.txt", []byte("123")},
-	4:   {".tmp/test/src/four.txt", []byte("1234")},
-	5:   {".tmp/test/src/five.txt", []byte("12345")},
-	6:   {".tmp/test/src/six.txt", []byte("123456")},
-	7:   {".tmp/test/src/seven.txt", []byte("1234567")},
-	8:   {".tmp/test/src/eight.txt", []byte("12345678")},
-	9:   {".tmp/test/src/nine.txt", []byte("123456789")},
-	10:  {".tmp/test/src/ten.txt", []byte("1234567890")},
-	11:  {".tmp/test/src/eleven.txt", []byte("12345678901")},
-	12:  {".tmp/test/src/twelve.txt", []byte("123456789012")},
+	1:  {".tmp/test/src/one.txt", []byte("1")},
+	2:  {".tmp/test/src/two.txt", []byte("12")},
+	3:  {".tmp/test/src/three.txt", []byte("123")},
+	4:  {".tmp/test/src/four.txt", []byte("1234")},
+	5:  {".tmp/test/src/five.txt", []byte("12345")},
+	6:  {".tmp/test/src/six.txt", []byte("123456")},
+	7:  {".tmp/test/src/seven.txt", []byte("1234567")},
+	8:  {".tmp/test/src/eight.txt", []byte("12345678")},
+	9:  {".tmp/test/src/nine.txt", []byte("123456789")},
+	10: {".tmp/test/src/ten.txt", []byte("1234567890")},
+	11: {".tmp/test/src/eleven.txt", []byte("12345678901")},
+	12: {".tmp/test/src/twelve.txt", []byte("123456789012")},
+
+	21: {".tmp/test/src/uno.json", []byte(`["blue", "green"]`)},
+
 	101: {".tmp/test/src/inner/inner1.txt", []byte("inner")},
 	102: {".tmp/test/src/inner/inner/inner2.txt", []byte("double inner")},
 }
 
 func TestBasic(t *testing.T) {
 	tests := []struct {
-		name     string
+		name string
+
+		compFilter string
+		extrFilter string
+
 		files    []int
 		expFiles []int
 	}{
@@ -67,12 +74,25 @@ func TestBasic(t *testing.T) {
 			files:    []int{5, 8, 101, 102},
 			expFiles: []int{5, 8},
 		},
+		{
+			name:       "compress filter",
+			compFilter: "*.txt",
+			files:      []int{1, 2, 3, 21},
+			expFiles:   []int{1, 2, 3},
+		},
+		{
+			name:       "extract filter",
+			extrFilter: "*.txt",
+			files:      []int{4, 5, 6, 21},
+			expFiles:   []int{4, 5, 6},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := setupServer()
 			setupTestBasicData(t, tt.files)
+			defer teardownTestBasicData(t)
 			sUrl := srv.URL
 			serverUrl, err := url.Parse(sUrl)
 			if err != nil {
@@ -83,6 +103,7 @@ func TestBasic(t *testing.T) {
 			compReq := arch.CompressionRequest{
 				ArchiveName: ".tmp/test/archive.zip",
 				Directory:   ".tmp/test/src/",
+				Filter:      tt.compFilter,
 			}
 
 			compReqData, err := json.Marshal(compReq)
@@ -91,7 +112,8 @@ func TestBasic(t *testing.T) {
 			}
 
 			serverUrl.Path = "/api/v1/compress"
-			compResp, err := http.Post(serverUrl.String(), "application/json", bytes.NewReader(compReqData))
+			compResp, err := http.Post(
+				serverUrl.String(), "application/json", bytes.NewReader(compReqData))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -102,6 +124,7 @@ func TestBasic(t *testing.T) {
 			extReq := arch.ExtractRequest{
 				ArchiveName: ".tmp/test/archive.zip",
 				Directory:   ".tmp/test/dst",
+				Filter:      tt.extrFilter,
 			}
 
 			extReqData, err := json.Marshal(extReq)
@@ -110,7 +133,8 @@ func TestBasic(t *testing.T) {
 			}
 
 			serverUrl.Path = "/api/v1/extract"
-			extResp, err := http.Post(serverUrl.String(), "application/json", bytes.NewReader(extReqData))
+			extResp, err := http.Post(
+				serverUrl.String(), "application/json", bytes.NewReader(extReqData))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -145,8 +169,6 @@ func TestBasic(t *testing.T) {
 			if !fileListsEqual(expFilenames, actFilenames) {
 				t.Fatalf("wrong files restored: expected %s, got %s", expFilenames, actFilenames)
 			}
-
-			teardownTestBasicData(t)
 		})
 	}
 }
@@ -183,6 +205,7 @@ func TestCompressNegative(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := setupServer()
 			setupTestBasicData(t, []int{})
+			defer teardownTestBasicData(t)
 			sUrl := srv.URL
 			serverUrl, err := url.Parse(sUrl)
 			if err != nil {
@@ -196,20 +219,20 @@ func TestCompressNegative(t *testing.T) {
 			}
 
 			serverUrl.Path = "/api/v1/compress"
-			compResp, err := http.Post(serverUrl.String(), "application/json", bytes.NewReader(compReqData))
+			compResp, err := http.Post(
+				serverUrl.String(), "application/json", bytes.NewReader(compReqData))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if tt.expCode != compResp.StatusCode {
 				t.Fatalf("Response code expected %d got %d", tt.expCode, compResp.StatusCode)
 			}
-
-			teardownTestBasicData(t)
 		})
 	}
 	t.Run("illegal compression request", func(t *testing.T) {
 		srv := setupServer()
 		setupTestBasicData(t, []int{})
+		defer teardownTestBasicData(t)
 		sUrl := srv.URL
 		serverUrl, err := url.Parse(sUrl)
 		if err != nil {
@@ -236,8 +259,6 @@ func TestCompressNegative(t *testing.T) {
 		if compResp.StatusCode != 400 {
 			t.Fatalf("Response code expected %d got %d", 400, compResp.StatusCode)
 		}
-
-		teardownTestBasicData(t)
 	})
 }
 
@@ -273,6 +294,7 @@ func TestExtractNegative(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			srv := setupServer()
 			setupTestBasicData(t, []int{1, 3, 5, 7})
+			defer teardownTestBasicData(t)
 			sUrl := srv.URL
 			serverUrl, err := url.Parse(sUrl)
 			if err != nil {
@@ -291,7 +313,8 @@ func TestExtractNegative(t *testing.T) {
 			}
 
 			serverUrl.Path = "/api/v1/compress"
-			compResp, err := http.Post(serverUrl.String(), "application/json", bytes.NewReader(compReqData))
+			compResp, err := http.Post(
+				serverUrl.String(), "application/json", bytes.NewReader(compReqData))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -305,20 +328,20 @@ func TestExtractNegative(t *testing.T) {
 			}
 
 			serverUrl.Path = "/api/v1/extract"
-			extResp, err := http.Post(serverUrl.String(), "application/json", bytes.NewReader(extReqData))
+			extResp, err := http.Post(
+				serverUrl.String(), "application/json", bytes.NewReader(extReqData))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if tt.expCode != extResp.StatusCode {
 				t.Fatalf("Response code expected %d response %d", tt.expCode, extResp.StatusCode)
 			}
-
-			teardownTestBasicData(t)
 		})
 	}
 	t.Run("illegal extraction request", func(t *testing.T) {
 		srv := setupServer()
 		setupTestBasicData(t, []int{1, 3, 5, 7})
+		defer teardownTestBasicData(t)
 		sUrl := srv.URL
 		serverUrl, err := url.Parse(sUrl)
 		if err != nil {
@@ -337,7 +360,8 @@ func TestExtractNegative(t *testing.T) {
 		}
 
 		serverUrl.Path = "/api/v1/compress"
-		compResp, err := http.Post(serverUrl.String(), "application/json", bytes.NewReader(compReqData))
+		compResp, err := http.Post(
+			serverUrl.String(), "application/json", bytes.NewReader(compReqData))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -357,15 +381,14 @@ func TestExtractNegative(t *testing.T) {
 		}
 
 		serverUrl.Path = "/api/v1/extract"
-		extResp, err := http.Post(serverUrl.String(), "application/json", bytes.NewReader(extReqData))
+		extResp, err := http.Post(
+			serverUrl.String(), "application/json", bytes.NewReader(extReqData))
 		if err != nil {
 			t.Fatal(err)
 		}
 		if extResp.StatusCode != 400 {
 			t.Fatalf("Response code expected %d response %d", 400, extResp.StatusCode)
 		}
-
-		teardownTestBasicData(t)
 	})
 }
 
