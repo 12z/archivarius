@@ -4,7 +4,8 @@ Content-Type: application/json
 {
     "file": ".testdata/archive/archive.zip",
     "dir": ".testdata/src",
-    "filter": ""
+    "filter": "",
+    "limit": 0
 }
 
 ###
@@ -15,5 +16,6 @@ Content-Type: application/json
 {
     "file": ".testdata/archive/archive.zip",
     "dir": ".testdata/dst/one",
-    "filter": ""
+    "filter": "",
+    "limit": 0
 }
